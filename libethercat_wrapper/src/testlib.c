@@ -51,6 +51,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <syslog.h>
 
 /****************************************************************************/
 
@@ -372,7 +373,8 @@ int main(int argc, char **argv)
 {
     cmdline(argc, argv, NULL);
 
-    FILE *llecatlog = fopen("./llecat.log", "w+");
+    //FILE *llecatlog = fopen("./llecat.log", "w+");
+    FILE * llecatlog = stderr;
     if (llecatlog == NULL) {
         fprintf(stderr, "Warning, could not open logfile\n");
     }
@@ -404,43 +406,71 @@ int main(int argc, char **argv)
 
         read_object_dictionary(master);
     }
-
-    /*
-     * Activate master and start operation
-     */
-
-    int master_running = 0;
-#if LIBINTERNAL_CYCLIC_HANDLING
-#  warning Not implemented cyclic handling is used.
-    master_running = ecw_master_start_cyclic(master);
-#else
-    master_running = ecw_master_start(master);
-#endif
-    if (master_running) {
-        fprintf(stderr, "Master not started, aborting operation\n");
+        
+    if (master == NULL) {
+        fprintf(stderr, "[ERROR %s] Cannot initialize master\n", __func__);
         return 1;
     }
 
-    set_priority();
-    setup_signal_handler(&sa);
-    setup_timer(&tv);
-    logmsg(0, "Started.\n");
 
-    int slave_count = ecw_master_slave_count(master);
-    logmsg(0, "Number of slaves: %d\n", slave_count);
+    /* check if we have one slave */
+    if (ecw_slave_get(master, 0) != NULL) {
 
-    struct timespec time_start;
-    struct timespec time_end;
-    struct timespec time_diff;
-    double time_mean = 0;
-    size_t time_counter = 0;
+        if (ecw_slave_get(master, 0) == NULL) {
+            printf("slave NULL\n");
+        }
 
-    //g_running = 0;
-    while (g_running) {
-        pause();
 
-        /* wait for the timer to rise alarm */
-        while (sig_alarms != user_alarms) {
+        /* test write SDO before cyclic op */
+        int ret = ecw_slave_set_sdo_value(ecw_slave_get(master, 0), 0x2001, 0, 1234);
+        switch(ret) {
+        case 0:
+            printf("sdo set value success\n");
+            break;
+        default:
+            printf("sdo set value error %d\n", ret);
+            break;
+        }
+
+        /*
+         * Activate master and start operation
+         */
+
+        int master_running = 0;
+#if LIBINTERNAL_CYCLIC_HANDLING
+#  warning Not implemented cyclic handling is used.
+        master_running = ecw_master_start_cyclic(master);
+#else
+        master_running = ecw_master_start(master);
+#endif
+        if (master_running) {
+            fprintf(stderr, "Master not started, aborting operation\n");
+            return 1;
+        }
+
+        set_priority();
+        setup_signal_handler(&sa);
+        setup_timer(&tv);
+        logmsg(0, "Started.\n");
+
+        int slave_count = ecw_master_slave_count(master);
+        logmsg(0, "Number of slaves: %d\n", slave_count);
+
+        struct timespec time_start;
+        struct timespec time_end;
+        struct timespec time_diff;
+        double time_mean = 0;
+        size_t time_counter = 0;
+
+        int i=0;
+        int set_value = 0;
+        int read_value = 0;
+        //g_running = 0;
+        while (g_running) {
+            pause();
+
+            /* wait for the timer to rise alarm */
+            while (sig_alarms != user_alarms) {
                 user_alarms++;
 
 #if 0
@@ -459,19 +489,56 @@ int main(int argc, char **argv)
 
                 Ethercat_Slave_t *slave = ecw_slave_get(master, 0);
                 int value = ecw_slave_get_in_value(slave, 0);
-//                printf("< 0x%0x ", value);
+                //printf("< 0x%0x ", value);
                 //value = (~value) & 0xffff;
                 value = (value + 1) & 0xffff;
-//                printf("> 0x%0x\n", value);
+                //printf("> 0x%0x\n", value);
                 ecw_slave_set_out_value(slave, 0, value);
+
+                //read sdo
+                int sdo_value = 0;
+                int ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
+                if (ret == 0) { // save value only when ecw_slave_get_sdo_value returns 0 (success)
+                    read_value = sdo_value;
+                }
+
+                i++;
+                // change sdo value to write every second, also print last read sdo value
+                if (i%1000 == 0) {
+                    printf("sdo get value %d\n", read_value);
+                    //printf("position: %d\n", ecw_slave_get_in_value(slave, 2));
+                    if (set_value == 0) {
+                        set_value = i/1000;
+                        printf("sdo set value %d\n", set_value);
+                    }
+                }
+                // call ecw_slave_set_sdo_value until it returns 0 (success)
+                if (set_value) {
+                    int ret = ecw_slave_set_sdo_value(slave, 0x2001, 0, set_value);
+                    switch(ret) {
+                    case 1:
+                        //printf("sdo set value busy\n");
+                        break;
+                    case 0:
+                        //printf("sdo set value success\n");
+                        set_value = 0;
+                        break;
+                    default:
+                        printf("sdo set value error %d\n", ret);
+                        set_value = 0;
+                        break;
+                    }
+                }
+
+            }
         }
+        printf("Summary mean runtime of ecw_master_cyclic_function(): %f ns\n", time_mean);
+        ecw_master_stop(master);
     }
 
-    ecw_master_stop(master);
     ecw_master_release(master);
-    fclose(llecatlog);
+    //fclose(llecatlog);
 
-    printf("Summary mean runtime of ecw_master_cyclic_function(): %f ns\n", time_mean);
 
     return 0;
 }

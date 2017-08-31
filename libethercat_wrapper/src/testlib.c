@@ -52,6 +52,7 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <syslog.h>
+#include <pthread.h>
 
 /****************************************************************************/
 
@@ -369,6 +370,48 @@ static void read_object_dictionary(Ethercat_Master_t *master)
     }
 }
 
+void sdoRequests(Ethercat_Slave_t *slave)
+{
+  int i = 0;
+  int read_value = 0;
+
+  while (1) {
+    //read sdo
+    int sdo_value = 0;
+    int ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
+    switch (ret) {
+      case 0:
+        printf("sdo get value success - read value is: %d\n", sdo_value);
+        read_value = sdo_value;
+        break;
+      case 1:
+        printf("sdo get value busy\n");
+        break;
+      default:
+        printf("sdo get value error %d\n", ret);
+        read_value = 0;
+        break;
+    }
+
+    i++;
+
+    ret = ecw_slave_set_sdo_value(slave, 0x2001, 0, i);
+    switch (ret) {
+      case 0:
+        printf("sdo set value success\n");
+        break;
+      case 1:
+        printf("sdo set value busy\n");
+        break;
+      default:
+        printf("sdo set value error %d\n", ret);
+        break;
+    }
+
+    sleep(1);
+  }
+}
+
 int main(int argc, char **argv)
 {
     cmdline(argc, argv, NULL);
@@ -406,12 +449,6 @@ int main(int argc, char **argv)
 
         read_object_dictionary(master);
     }
-        
-    if (master == NULL) {
-        fprintf(stderr, "[ERROR %s] Cannot initialize master\n", __func__);
-        return 1;
-    }
-
 
     /* check if we have one slave */
     if (ecw_slave_get(master, 0) != NULL) {
@@ -436,6 +473,11 @@ int main(int argc, char **argv)
          * Activate master and start operation
          */
 
+        set_priority();
+        setup_signal_handler(&sa);
+        setup_timer(&tv);
+        logmsg(0, "Started.\n");
+
         int master_running = 0;
 #if LIBINTERNAL_CYCLIC_HANDLING
 #  warning Not implemented cyclic handling is used.
@@ -448,11 +490,6 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        set_priority();
-        setup_signal_handler(&sa);
-        setup_timer(&tv);
-        logmsg(0, "Started.\n");
-
         int slave_count = ecw_master_slave_count(master);
         logmsg(0, "Number of slaves: %d\n", slave_count);
 
@@ -462,10 +499,12 @@ int main(int argc, char **argv)
         double time_mean = 0;
         size_t time_counter = 0;
 
-        int i=0;
-        int set_value = 0;
-        int read_value = 0;
-        //g_running = 0;
+        Ethercat_Slave_t *slave = ecw_slave_get(master, 0);
+
+        pthread_t tid;
+        pthread_create(&tid, NULL, sdoRequests, slave);
+        pthread_detach(tid);
+
         while (g_running) {
             pause();
 
@@ -484,52 +523,6 @@ int main(int argc, char **argv)
 
                 timespec_diff(&time_start, &time_end, &time_diff);
                 time_mean = calc_mean(time_mean, (double)time_diff.tv_nsec, time_counter++);
-
-                //printf("[DEBUG] set target position %d on node 0\n", outbound[0]);
-
-                Ethercat_Slave_t *slave = ecw_slave_get(master, 0);
-                int value = ecw_slave_get_in_value(slave, 0);
-                //printf("< 0x%0x ", value);
-                //value = (~value) & 0xffff;
-                value = (value + 1) & 0xffff;
-                //printf("> 0x%0x\n", value);
-                ecw_slave_set_out_value(slave, 0, value);
-
-                //read sdo
-                int sdo_value = 0;
-                int ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
-                if (ret == 0) { // save value only when ecw_slave_get_sdo_value returns 0 (success)
-                    read_value = sdo_value;
-                }
-
-                i++;
-                // change sdo value to write every second, also print last read sdo value
-                if (i%1000 == 0) {
-                    printf("sdo get value %d\n", read_value);
-                    //printf("position: %d\n", ecw_slave_get_in_value(slave, 2));
-                    if (set_value == 0) {
-                        set_value = i/1000;
-                        printf("sdo set value %d\n", set_value);
-                    }
-                }
-                // call ecw_slave_set_sdo_value until it returns 0 (success)
-                if (set_value) {
-                    int ret = ecw_slave_set_sdo_value(slave, 0x2001, 0, set_value);
-                    switch(ret) {
-                    case 1:
-                        //printf("sdo set value busy\n");
-                        break;
-                    case 0:
-                        //printf("sdo set value success\n");
-                        set_value = 0;
-                        break;
-                    default:
-                        printf("sdo set value error %d\n", ret);
-                        set_value = 0;
-                        break;
-                    }
-                }
-
             }
         }
         printf("Summary mean runtime of ecw_master_cyclic_function(): %f ns\n", time_mean);

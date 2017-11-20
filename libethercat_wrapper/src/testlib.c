@@ -379,7 +379,8 @@ void* sdoRequests(void *args)
   while (1) {
     //read sdo
     int sdo_value = 0;
-    int ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
+    int ret = 0;
+    ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
     switch (ret) {
       case 0:
         printf("sdo get value success - read value is: %d\n", sdo_value);
@@ -409,7 +410,7 @@ void* sdoRequests(void *args)
         break;
     }
 
-    sleep(1);
+    usleep(100000);
   }
 }
 
@@ -458,6 +459,7 @@ int main(int argc, char **argv)
             printf("slave NULL\n");
         }
 
+        printf("\nTEST SDO DOWNLOAD (WRITE) BEFORE STARTING THE CYCLIC OPERATION: ");
 
         /* test write SDO before cyclic op */
         int ret = ecw_slave_set_sdo_value(ecw_slave_get(master, 0), 0x2001, 0, 1234);
@@ -469,6 +471,9 @@ int main(int argc, char **argv)
             printf("sdo set value error %d\n", ret);
             break;
         }
+
+        printf("\n");
+        printf("\nSTARTING CYCLIC OPERATION\n\n");
 
         /*
          * Activate master and start operation

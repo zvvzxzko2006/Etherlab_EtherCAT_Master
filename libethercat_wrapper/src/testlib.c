@@ -370,8 +370,9 @@ static void read_object_dictionary(Ethercat_Master_t *master)
     }
 }
 
-void sdoRequests(Ethercat_Slave_t *slave)
+void* sdoRequests(void *args)
 {
+  Ethercat_Slave_t *slave = args;
   int i = 0;
   int read_value = 0;
 

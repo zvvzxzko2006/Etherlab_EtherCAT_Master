@@ -104,7 +104,7 @@ void signal_handler(int signum) {
 static void set_priority(void)
 {
     if (getuid() != 0) {
-        logmsg(0, "Warning, be root to get higher priority\n");
+//        logmsg(0, "Warning, be root to get higher priority\n");
         return;
     }
 
@@ -151,7 +151,7 @@ static void stop_timer(struct itimerval *tv)
 static void setup_timer(struct itimerval *tv)
 {
     /* setup timer */
-    logmsg(1, "Starting timer...\n");
+//    logmsg(1, "Starting timer...\n");
     tv->it_interval.tv_sec = 0;
     tv->it_interval.tv_usec = 1000000 / FREQUENCY;
     tv->it_value.tv_sec = 0;
@@ -458,13 +458,10 @@ int main(int argc, char **argv)
         read_object_dictionary(master);
     }
 
+    Ethercat_Slave_t *slave = ecw_slave_get(master, 0);
+
     /* check if we have one slave */
-    if (ecw_slave_get(master, 0) != NULL) {
-
-        if (ecw_slave_get(master, 0) == NULL) {
-            printf("slave NULL\n");
-        }
-
+    if (slave != NULL) {
         printf("\nTEST SDO DOWNLOAD (WRITE) BEFORE STARTING THE CYCLIC OPERATION: ");
 
         /* test write SDO before cyclic op */
@@ -488,7 +485,6 @@ int main(int argc, char **argv)
         set_priority();
         setup_signal_handler(&sa);
         setup_timer(&tv);
-        logmsg(0, "Started.\n");
 
         int master_running = 0;
 #if LIBINTERNAL_CYCLIC_HANDLING
@@ -503,7 +499,6 @@ int main(int argc, char **argv)
         }
 
         int slave_count = ecw_master_slave_count(master);
-        logmsg(0, "Number of slaves: %d\n", slave_count);
 
         struct timespec time_start;
         struct timespec time_end;
@@ -523,27 +518,15 @@ int main(int argc, char **argv)
             /* wait for the timer to rise alarm */
             while (sig_alarms != user_alarms) {
                 user_alarms++;
-
-#if 0
-                ecw_master_receive_pdo(master);
-                ecw_master_send_pdo(master);
-#endif
-                clock_gettime(CLOCK_MONOTONIC, &time_start);
                 ecw_master_cyclic_function(master);
-
-                clock_gettime(CLOCK_MONOTONIC, &time_end);
-
-                timespec_diff(&time_start, &time_end, &time_diff);
-                time_mean = calc_mean(time_mean, (double)time_diff.tv_nsec, time_counter++);
             }
         }
-        printf("Summary mean runtime of ecw_master_cyclic_function(): %f ns\n", time_mean);
         ecw_master_stop(master);
+    } else {
+      printf("slave NULL\n");
     }
 
     ecw_master_release(master);
-    //fclose(llecatlog);
-
 
     return 0;
 }

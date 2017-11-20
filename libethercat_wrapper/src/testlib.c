@@ -382,6 +382,9 @@ void* sdoRequests(void *args)
     int ret = 0;
     ret = ecw_slave_get_sdo_value(slave, 0x2001, 0, &sdo_value);
     switch (ret) {
+      case -3:
+        printf("sdo not found\n");
+        break;
       case 0:
         printf("sdo get value success - read value is: %d\n", sdo_value);
         read_value = sdo_value;
@@ -399,6 +402,9 @@ void* sdoRequests(void *args)
 
     ret = ecw_slave_set_sdo_value(slave, 0x2001, 0, i);
     switch (ret) {
+      case -3:
+        printf("sdo not found\n");
+        break;
       case 0:
         printf("sdo set value success\n");
         break;

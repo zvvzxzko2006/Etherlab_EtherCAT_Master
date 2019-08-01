@@ -1,0 +1,8 @@
+#! /bin/bash
+
+./configure \
+--enable-generic \
+--disable-8139too \
+--with-linux-dir=/home/lvdong/workspace/tx2-kernel/kernel/kernel/tegra-jetson-tx2-kernel \
+--prefix=/home/lvdong/etherlab/install \
+--host=aarch64-linux-gnu

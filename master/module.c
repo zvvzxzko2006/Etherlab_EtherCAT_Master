@@ -40,7 +40,7 @@
 #include "globals.h"
 #include "master.h"
 #include "device.h"
-#include "gitlog.h"
+//#include "gitlog.h"
 
 /*****************************************************************************/
 
@@ -101,7 +101,7 @@ int __init ec_init_module(void)
     int i, ret = 0;
 
     EC_INFO("Master driver %s\n", EC_MASTER_VERSION);
-    EC_INFO("git commit %s\n", gitlog);
+    //EC_INFO("git commit %s\n", gitlog);
 
     sema_init(&master_sem, 1);
 

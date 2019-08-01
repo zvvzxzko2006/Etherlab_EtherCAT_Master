@@ -157,3 +157,4 @@ libethercat_wrapper/src/.deps
 libethercat_wrapper/libethercat_wrapper.la
 libethercat_wrapper/llecat.log
 libethercat_wrapper/testlib
+install
